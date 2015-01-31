@@ -1,6 +1,7 @@
 package jGPIO;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
@@ -35,17 +36,15 @@ public class GPIO {
 
 		public String getValue() {
 			return value;
-		}
-		
-		
+		}	
 	}
 	
 	/* Regex Pattern matching */
-	public static Pattern pinPattern = Pattern.compile("(gpio)([0-9])_([0-9]*)$", Pattern.CASE_INSENSITIVE);
-	public static Pattern pinPatternAlt = Pattern.compile("(gpio)([\\d]*)$",Pattern.CASE_INSENSITIVE);
+	public static Pattern pinPattern = Pattern.compile("(gpio)([0-9])_([0-9]+)$", Pattern.CASE_INSENSITIVE);
+	public static Pattern pinPatternAlt = Pattern.compile("(gpio)(_)?([\\d]+)$",Pattern.CASE_INSENSITIVE);
 	
 	/* Beaglebone Regex */
-	public static Pattern pinPatternBeagle = Pattern.compile("(p)([0-9])_([0-9]*)", Pattern.CASE_INSENSITIVE);
+	public static Pattern pinPatternBeagle = Pattern.compile("(p)([0-9])_([0-9]+)", Pattern.CASE_INSENSITIVE);
 	
 	boolean closing = false;
 	/**
@@ -85,7 +84,6 @@ public class GPIO {
 					}
 				}
 			}
-			
 			return freeList;
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -96,7 +94,6 @@ public class GPIO {
 		} 
 		
 		return null;
-		
 	}
 	
 	
@@ -106,9 +103,12 @@ public class GPIO {
 		
 		// we have the pin to set the direction on for the digital IO or use analogue IO 
 		if (direction == Direction.INPUT || direction == Direction.OUTPUT) {
-			writeFile(FilePaths.getExportPath(), String.valueOf(pinNumber));
+		    gpioFiles = new FilePaths(pinNumber);
+		    // Check to see if it doesn't exist before tryping to export it.
+		    if (!new File(FilePaths.getValuePath(pinNumber)).exists()) {
+		        writeFile(FilePaths.getExportPath(), String.valueOf(pinNumber));
+		    }
 			writeFile(FilePaths.getDirectionPath(pinNumber), direction.value);
-			gpioFiles = new FilePaths(pinNumber);
 		} else if (direction == Direction.ANALOGUE) {
 			System.out.println("Analogue called with a string constructor, not implemented");
 		} else {
@@ -118,10 +118,12 @@ public class GPIO {
 	
 	public GPIO(int pinNumber, Direction direction) throws InvalidGPIOException {
 		pinDirection = direction;
+		gpioFiles = new FilePaths(pinNumber);
 		if (direction == Direction.INPUT || direction == Direction.OUTPUT) {
-			writeFile(FilePaths.getExportPath(), String.valueOf(pinNumber));
+		    if (!new File(FilePaths.getValuePath(pinNumber)).exists()) {
+                writeFile(FilePaths.getExportPath(), String.valueOf(pinNumber));
+            }
 			writeFile(FilePaths.getDirectionPath(pinNumber), direction.value);
-			gpioFiles = new FilePaths(pinNumber);
 		} else if (direction == Direction.ANALOGUE) {
 			pinName = FilePaths.getAnalogueValuePath(pinNumber);
 		} else {
@@ -143,7 +145,7 @@ public class GPIO {
 		} else {
 			Matcher matcher = pinPatternAlt.matcher(pinName);
 			if (matcher.find()) {
-				pinNumber = Integer.parseInt(matcher.group(2));
+				pinNumber = Integer.parseInt(matcher.group(matcher.groupCount()));
 			} else {
 				matcher = pinPattern.matcher(pinName);
 				if (matcher.find()) {
@@ -166,15 +168,13 @@ public class GPIO {
 			FileOutputStream fos = new FileOutputStream(fileName);
 			fos.write(value.getBytes());
 			fos.close();
+		} catch (FileNotFoundException fnfe) {
+		    throw new RuntimeException("Permission denied to GPIO file: " + fnfe.getMessage());
+		} catch (SecurityException e) {
+		    throw new RuntimeException("Permission denied to GPIO file: " + e.getMessage());
 		} catch (IOException e) {
-			if(e.getMessage().contains("Permission denied")) {
-				throw new RuntimeException("Permission denied to GPIO file: " + e.getMessage());
-			} else if (e.getMessage().contains("busy")) {
-				System.out.println("GPIO is already exported, continuing");
-				return;
-			}
-			throw new RuntimeException("Could not write to GPIO file: " + e.getMessage());
-		}
+            System.out.println("GPIO is already exported, continuing");
+        }
 	}
 	
 	protected String readFile(String filename) throws FileNotFoundException, RuntimeException, IOException {
@@ -206,6 +206,19 @@ public class GPIO {
 	
 	public void writeValue(String incoming) {
 		writeFile(FilePaths.getValuePath(pinNumber), incoming);
+		try {
+		    String readVal = readValue();
+            if (!readVal.equals(incoming)) {
+                throw new RuntimeException("Tried to change pin " + pinNumber + 
+                        " but failed to write: " + incoming + ", got " + readVal);
+            }
+		} catch (FileNotFoundException fnfe) {
+            throw new RuntimeException("Permission denied to GPIO file: " + fnfe.getMessage());
+        } catch (SecurityException e) {
+            throw new RuntimeException("Permission denied to GPIO file: " + e.getMessage());
+        } catch (IOException e) {
+            throw new RuntimeException("IO Exception to GPIO file: " + e.getMessage());
+        }
 	}
 	
 	public String getGPIOName() {
