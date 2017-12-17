@@ -164,11 +164,11 @@ public class DTO {
         // Generate the lshw output if available
         Process lshw;
         try {
-            lshw = Runtime.getRuntime().exec("lshw -c bus -xml");
+            lshw = Runtime.getRuntime().exec("lshw -c bus -disable dmi -xml");
             lshw.waitFor();
         } catch (Exception e1) {
             System.out.println("Couldn't execute lshw to identify board");
-            e1.printStackTrace();
+            System.out.println(e1.getMessage());
             return null;
         }
         Document lshwXML = null;
